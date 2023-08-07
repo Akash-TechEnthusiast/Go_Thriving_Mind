@@ -10,7 +10,7 @@ import (
 
 func handleGetRequest(w http.ResponseWriter, r *http.Request) {
 	// Your logic to handle the GET request goes here
-
+// Hello world 
 	// In this example, we'll simply write "Hello, GET request!" as the response
 	w.Write([]byte("Hello, GET request!"))
 }
