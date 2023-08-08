@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"io/ioutil"
+	"os"
+	"strings"
 )
 
 type EntityMetaData struct {
@@ -112,6 +114,15 @@ func handlePostRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		fileName := entityMetaData.EntityName + ".go"
+
+		// Attempt to remove the file
+		errcode := os.Remove(fileName)
+		if errcode != nil {
+			fmt.Println("Error:", errcode)
+			return
+		}
+
 		if err := generateEntityFile(entityMetaData); err != nil {
 			fmt.Println("Error creating entity file:", err)
 			return
@@ -130,42 +141,77 @@ func handlePostRequest(w http.ResponseWriter, r *http.Request) {
 
 
 func generateEntityFile(entityMetaData EntityMetaData) error {
-	content := fmt.Sprintf(`package main
-	
+	content := fmt.Sprintf(`package main`)
+
+	content += "\n"
+	content += "\n"
+
+
+	content += fmt.Sprintf(`import (
+		"time"
+		"fmt"
+)`)
+
+	content += fmt.Sprintf(`
+
 type %s struct {
 	`, entityMetaData.EntityName)
 
-	content += fmt.Sprintf(`package main
-	
-	type %s struct {
-		`, entityMetaData.EntityName)
-	
+	content += "\n"
+
 	for _, attr := range entityMetaData.Attributes {
 
-		if(attr.Type=="text"){
+	
+    	if(attr.Type=="text"){
 			content += fmt.Sprintf("    %s %s\n", attr.Name, "string")
-		}
-		if(attr.Type=="number"){
+		} else if(attr.Type=="number"){
 			content += fmt.Sprintf("    %s %s\n", attr.Name, "int")
-		}
-		if(attr.Type=="date"){
+		} else if(attr.Type=="date"){
 			content += fmt.Sprintf("    %s %s\n", attr.Name, "time.Time")
-		}
-		if(attr.Type=="dateTime"){
+		} else if(attr.Type=="dateTime"){
 			content += fmt.Sprintf("    %s %s\n", attr.Name, "time.Time")
-		}
-		if(attr.Type=="boolean"){
+		} else if(attr.Type=="boolean"){
 			content += fmt.Sprintf("    %s %s\n", attr.Name, "bool")
-		}
-		if(attr.Type=="longtext"){
+		} else if(attr.Type=="longtext"){
+			content += fmt.Sprintf("    %s %s\n", attr.Name, "string")
+		} else if(attr.Type=="file"){
 			content += fmt.Sprintf("    %s %s\n", attr.Name, "string")
 		}
-		if(attr.Type=="file"){
-			content += fmt.Sprintf("    %s %s\n", attr.Name, "string")
-		}
-		//attrType="string"
+		
        
     }
+
+
+	for _, weakrel := range entityMetaData.Relationships.WeakRelationship {
+
+		LowerEntityId :=convertToLowerCase(weakrel.EntityID)
+		if(weakrel.RelationshipType=="ManyToOne"){
+
+			content += fmt.Sprintf("    %s %s\n", weakrel.EntityID, LowerEntityId)
+
+		}
+	    if(weakrel.RelationshipType=="OneToMany"){
+
+			content += fmt.Sprintf("    %s %s\n", weakrel.EntityID, "[]"+LowerEntityId)
+
+		}
+	}
+
+
+	for _, strongrel := range entityMetaData.Relationships.StrongRelationship {
+
+		LowerEntityId :=convertToLowerCase(strongrel.EntityID)
+		if(strongrel.RelationshipType=="OneToOne"){
+
+			content += fmt.Sprintf("    %s %s\n", strongrel.EntityID, LowerEntityId)
+
+		}
+	    if(strongrel.RelationshipType=="OneToMany"){
+
+			content += fmt.Sprintf("    %s %s\n", strongrel.EntityID, "[]"+LowerEntityId)
+
+		}
+	}
 	
 	content += "}\n"
 	
@@ -178,4 +224,10 @@ type %s struct {
 func main() {
 	http.HandleFunc("/postendpoint", handlePostRequest)
 	http.ListenAndServe(":8080", nil)
+}
+
+func convertToLowerCase(entityId string) string {
+	lowercaseFirst := strings.ToLower(entityId[:1]) + entityId[1:]
+
+	return lowercaseFirst
 }
