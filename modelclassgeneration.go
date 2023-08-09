@@ -5,9 +5,21 @@ import (
 	"fmt"
 	"net/http"
 	"io/ioutil"
-	"os"
+	//"os"
 	"strings"
+	"database/sql"
+	_ "github.com/lib/pq"
 )
+
+const (
+    host = "localhost"
+    port = 5432
+    user = "postgres"
+    password = "KGM@123$"
+    dbname = "postgres"
+	schema = "next_gen_app"
+)
+
 
 type EntityMetaData struct {
 	ID         string `json:"_id"`
@@ -114,20 +126,25 @@ func handlePostRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		fileName := entityMetaData.EntityName + ".go"
+		//fileName := entityMetaData.EntityName + ".go"
 
 		// Attempt to remove the file
-		errcode := os.Remove(fileName)
+	/*	errcode := os.Remove(fileName)
 		if errcode != nil {
 			fmt.Println("Error:", errcode)
 			return
-		}
-
-		if err := generateEntityFile(entityMetaData); err != nil {
+		} */
+		
+		/*if err := generateEntityFile(entityMetaData); err != nil {
 			fmt.Println("Error creating entity file:", err)
 			return
+		}*/
+		tablerr := createtableForEntity(entityMetaData);
+
+		if  tablerr != nil {
+			fmt.Println("Error creating entity file:", tablerr)
+			return
 		}
-	
 		fmt.Printf("Entity file '%s.go' created successfully.\n", entityMetaData.EntityName)
 
 		// You can now access the person's data and perform any desired actions
@@ -137,6 +154,142 @@ func handlePostRequest(w http.ResponseWriter, r *http.Request) {
 	} else {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+
+func createtableForEntity(entityMetaData EntityMetaData) error {
+
+	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", host, port, user, password, dbname)
+
+    // Open a connection to the database.
+    db, err := sql.Open("postgres", psqlInfo)
+	
+	
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+     dropTable:=fmt.Sprintf(`DROP TABLE IF EXISTS next_gen_app.%s`,entityMetaData.ID)
+	_, err = db.Exec(dropTable)
+	if err != nil {
+		panic(err)
+	}
+
+	// Replace "json_data" with your desired table name
+	
+
+	content := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS next_gen_app.%s (
+id SERIAL PRIMARY KEY,`,entityMetaData.ID)
+		content += "\n"
+
+	// Define the SQL statement to create the table
+
+		for _, attr := range entityMetaData.Attributes {
+
+	
+		    if(attr.Name!="id"){
+				//content += fmt.Sprintf("    %s  %s\n", attr.Name, "INT,")
+			
+				if(attr.Type=="text"){
+					content += fmt.Sprintf("    %s  %s\n", attr.Name, "TEXT,")
+				} else if(attr.Type=="number"){
+					content += fmt.Sprintf("    %s  %s\n", attr.Name, "INT,")
+				} else if(attr.Type=="date"){
+					content += fmt.Sprintf("    %s  %s\n", attr.Name, "DATE,")
+				} else if(attr.Type=="dateTime"){
+					content += fmt.Sprintf("    %s  %s\n", attr.Name, "TIMESTAMP,")
+				} else if(attr.Type=="boolean"){
+					content += fmt.Sprintf("    %s  %s\n", attr.Name, "TEXT,")
+				} else if(attr.Type=="longtext"){
+					content += fmt.Sprintf("    %s  %s\n", attr.Name, "TEXT,")
+				} else if(attr.Type=="file"){
+					content += fmt.Sprintf("    %s  %s\n", attr.Name, "TEXT,")
+				}
+			}
+		   
+		}
+		for _, weakrel := range entityMetaData.Relationships.WeakRelationship {
+
+		
+			if(weakrel.RelationshipType=="ManyToOne"){
+	
+			//	content += fmt.Sprintf("    %s  %s\n", weakrel.Attributes[0].Name, "TEXT,")
+	
+			}
+			if(weakrel.RelationshipType=="OneToMany"){
+	
+				// content += fmt.Sprintf("    %s  %s\n", attr.Name, "TEXT,")
+				create_thirdtable_For_onetomany_Entity(weakrel.EntityID,entityMetaData.ID)
+	
+			}
+		}
+	
+	
+		for _, strongrel := range entityMetaData.Relationships.StrongRelationship {
+	
+	
+			if(strongrel.RelationshipType=="OneToOne"){
+	
+				content += fmt.Sprintf("    %s  %s\n", strongrel.Attributes[0].Name, "TEXT,")
+	
+			}
+			if(strongrel.RelationshipType=="OneToMany"){
+	
+				//content += fmt.Sprintf("    %s  %s\n", attr.Name, "TEXT,")
+				create_thirdtable_For_onetomany_Entity(strongrel.EntityID,entityMetaData.ID)
+	
+			}
+		}
+		//fmt.Printf("table", content)
+		content = content[:len(content)-2]
+		content += ")"
+
+		fmt.Printf("Table %s created successfully and content  ==> %s.\n ", entityMetaData.ID,content)
+
+	_, err = db.Exec(content)
+
+	if (err != nil) {
+		panic(err)
+	}
+
+	fmt.Printf("Table %s created successfully.\n", entityMetaData.ID)
+	return err
+}
+
+func create_thirdtable_For_onetomany_Entity(childId string ,parentId string) error {
+
+	psqlInfo := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable", host, port, user, password, dbname)
+
+    // Open a connection to the database.
+    db, err := sql.Open("postgres", psqlInfo)
+	
+	
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+
+	thirdtableName:=parentId+"id__"+childId+"id"
+	//parentTable=parentId+"id"
+	//childTable=strongrel.EntityID+"id"
+
+	// Replace "json_data" with your desired table name
+	
+		content := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS next_gen_app.%s (
+		%s,%s`,thirdtableName,parentId+"id TEXT",childId+"id TEXT)")
+	
+
+		fmt.Printf("Table %s created successfully and content  ==> %s.\n ",content)
+
+	_, err = db.Exec(content)
+
+	if (err != nil) {
+		panic(err)
+	}
+
+	//fmt.Printf("Table %s created successfully.\n", entityMetaData.ID)
+	return err
 }
 
 
@@ -184,15 +337,15 @@ type %s struct {
 
 	for _, weakrel := range entityMetaData.Relationships.WeakRelationship {
 
-		LowerEntityId :=convertToLowerCase(weakrel.EntityID)
+		lowercase_entityId :=convertToLowerCase(weakrel.EntityID)
 		if(weakrel.RelationshipType=="ManyToOne"){
 
-			content += fmt.Sprintf("    %s %s\n", weakrel.EntityID, LowerEntityId)
+			content += fmt.Sprintf("    %s %s\n", weakrel.EntityID,lowercase_entityId)
 
 		}
 	    if(weakrel.RelationshipType=="OneToMany"){
 
-			content += fmt.Sprintf("    %s %s\n", weakrel.EntityID, "[]"+LowerEntityId)
+			content += fmt.Sprintf("    %s %s\n", weakrel.EntityID, "[]"+lowercase_entityId)
 
 		}
 	}
@@ -200,15 +353,15 @@ type %s struct {
 
 	for _, strongrel := range entityMetaData.Relationships.StrongRelationship {
 
-		LowerEntityId :=convertToLowerCase(strongrel.EntityID)
+		lowercase_entityId :=convertToLowerCase(strongrel.EntityID)
 		if(strongrel.RelationshipType=="OneToOne"){
 
-			content += fmt.Sprintf("    %s %s\n", strongrel.EntityID, LowerEntityId)
+			content += fmt.Sprintf("    %s %s\n", strongrel.EntityID, lowercase_entityId)
 
 		}
 	    if(strongrel.RelationshipType=="OneToMany"){
 
-			content += fmt.Sprintf("    %s %s\n", strongrel.EntityID, "[]"+LowerEntityId)
+			content += fmt.Sprintf("    %s %s\n", strongrel.EntityID, "[]"+lowercase_entityId)
 
 		}
 	}
@@ -222,8 +375,10 @@ type %s struct {
 
 
 func main() {
+	
 	http.HandleFunc("/postendpoint", handlePostRequest)
 	http.ListenAndServe(":8080", nil)
+	
 }
 
 func convertToLowerCase(entityId string) string {
@@ -231,3 +386,5 @@ func convertToLowerCase(entityId string) string {
 
 	return lowercaseFirst
 }
+
+
